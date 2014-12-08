@@ -1,0 +1,7 @@
+{
+  "name": "plugable-jison",
+  "version": "0.0.0",
+  "dependencies": {
+    "jison": "*"
+  }
+}
