@@ -7,18 +7,19 @@ class Lexer
     @steps.push lexingStep if lexingStep not in @steps
     lexingStep.lexer = @
 
-  setInput : (@input)->
+  setInput : (@input)=>
     @yytext = ""
     @index = 0
     @tokens = []
     @queue = []
 
-  lex : ->
+  lex : =>
     if queued = @dequeue()
       return queued.token
 
     currentText = @remainingText()
-    return if not currentText
+    console.log "currentText is #{currentText}"
+    return "EOF" if not currentText
     
     for step in @steps
       thisToken = step.lexingStep currentText
@@ -35,15 +36,16 @@ class Lexer
       return @dequeue().token
     return 'INVALID'
 
-  dequeue : ->
+  dequeue : =>
     return false if not @queue.length
     thisObj = @queue.shift()
     @yytext = thisObj.text
+    console.log 'setting yy text '+@yytext
     @index += @yytext.length
     @tokens.push thisObj.token
     return thisObj
 
-  remainingText : ->
+  remainingText : =>
     @input.substr @index
 
 class RegexStep
@@ -64,10 +66,10 @@ class RegexStep
     return false if not match or match.index isnt 0
     matchText = match[0]
     @yytext = matchText
-    return @callback matchText
+    return @callback.call @, match
 
 class LineStep
-  constructor : (@name='line')->
+  constructor : (@name='LINE')->
   lexingStep : (input)->
     firstLineBreak = input.indexOf '\n'
     if firstLineBreak isnt -1
@@ -88,13 +90,14 @@ class CharacterStep extends BaseStep
     @characters.push name if name not in @characters
 
   lexingStep : (input)->
+    console.log "=====Last Token is: #{@lastToken()}"
     if @lastToken() is 'CHARACTER_NAME'
       # Character name followed by a colon
       # [Character name] : some text
       nextColon = @colonRegex.exec input
       if nextColon?.index is 0
         @yytext = nextColon[0]
-        return 'COLON'
+        return ':'
 
     for characterName in @characters
       if input.substr(0, characterName.length) is characterName
@@ -128,7 +131,7 @@ class EmotionStep extends BaseStep
     while lexed = @subLexer.lex()
       console.log "lexed: #{lexed}, and yytext: #{@subLexer.yytext}"
       if lexed is 'INVALID'
-        break
+        return false
       else
         results.push {lexed, yytext:@subLexer.yytext}
         break if lexed is ')'
@@ -139,7 +142,7 @@ class EmotionStep extends BaseStep
     colonMatch = CharacterStep::colonRegex.exec @subLexer.remainingText()
     if colonMatch?.index is 0
       results.push
-        lexed : 'COLON'
+        lexed : ':'
         yytext : colonMatch[0]
 
     @yytext = (r.yytext for r in results)
@@ -153,38 +156,71 @@ class EmotionStep extends BaseStep
     # return false
 
 class SettingStep
+  regex:
+    dash : /[\s]*-+[\s]*/
+    string : /[^:\s,]+/
+    # key : /([^:\s]+)\s*:/
+    # value : /(.+?)\s*-+/
+    comma : /[\s]*,[\s]*/
+    colonRegex : /[\s]*:[\s]*/
 
   constructor : (@callback)->
+    @dashStep = new RegexStep @regex.dash, -> '-'
+    @stringStep = new RegexStep @regex.string, -> 'SETTING_STRING'
+    @commaStep = new RegexStep @regex.comma, -> ','
+    @colonStep = new RegexStep @regex.colonRegex, -> ':'
 
+    @subLexer = new Lexer
+    @subLexer.addLexingStep s for s in [@dashStep, @colonStep, @commaStep, @stringStep]
   lexingStep : (input)->
-    lineBreakIndex = input.indexOf '\n'
-    
-    thisLine = 
-      if lineBreakIndex isnt -1
-      then input.substr 0, lineBreakIndex
-      else input
-    
-    if not (thisLine.substr(0,2) ==  thisLine.substr(-2) == "--")
-      return false
-    
-    [key, valueString] = thisLine.split ':'
 
-    if not key or not valueString
-      throw 'Needs a colon in setting'
+    @subLexer.setInput input
 
-    key = key.substr 2
-    valueString = valueString.substr 0, valueString.length-2
+    results = []
+    i = 0
+    dashCount = 0
+    while lexed = @subLexer.lex()
 
-    key = key.replace /\s/g, ''
-    values = valueString.split ','
-    values = (v.replace /\s/g, '' for v in values)
+      break if i is 0 and lexed isnt '-'
+      break if lexed is 'INVALID'
+
+      results.push {lexed, yytext:@subLexer.yytext}
+
+      dashCount++ if lexed is '-'
+      break if dashCount is 2
+      i++
+
+    return false if results.length is 0
+
+    @yytext = (r.yytext for r in results)
+    return (r.lexed for r in results)
     
-    if values.length is 1
-      values = values[0]
+    # thisLine = 
+    #   if lineBreakIndex isnt -1
+    #   then input.substr 0, lineBreakIndex
+    #   else input
+    
+    # if not (thisLine.substr(0,2) ==  thisLine.substr(-2) == "--")
+    #   return false
+    
+    # [key, valueString] = thisLine.split ':'
 
-    @callback? key, values
-    @yytext = thisLine
-    return 'SETTING'
+    # if not key or not valueString
+    #   throw 'Needs a colon in setting'
+
+    # key = key.substr 2
+    # valueString = valueString.substr 0, valueString.length-2
+
+    # key = key.replace /\s/g, ''
+    # values = valueString.split ','
+    # values = (v.replace /\s/g, '' for v in values)
+    
+    # if values.length is 1
+    #   values = values[0]
+
+    # @callback? key, values
+    # @yytext = thisLine
+    # return 'SETTING'
 
 lexer = new Lexer
 
@@ -206,10 +242,93 @@ settingStep = new SettingStep (key, value)->
 
 lexer.addLexingStep settingStep
 
-lineStep = new LineStep
+lineStep = new LineStep 'SPEECH'
 lexer.addLexingStep lineStep
 
-lexer.setInput """
+# lexer.setInput """
+# -- Characters : Alice, Bob, Chris --
+# Long long time ago, there were 3 people.
+
+# Alice: Good morning.
+# Chris: Hello.
+# Bob(Smile): :)
+
+# Note: This line is not considered as speech.
+
+# Alice (Wave, Smile) : Bye
+# """
+
+# while output = lexer.lex()
+#   console.log "token=#{output}, text=#{lexer.yytext}"
+#   break if output is "EOF"
+
+Jison = require 'jison'
+
+grammar = {
+    "operators": [
+        ["left", ":"]
+    ]
+
+    "bnf": {
+        "expressions" :[[ "LINES EOF",   "console.log($1); console.log('hello is '+yy.hello); return $1;"  ]]
+
+        "LINES" : [
+          [ "LINE" , "$$ = [$1]" ]
+          [ "LINES LINE", "$1.push($2)" ]
+        ]
+
+        "LINE" : [
+          [ "SETTING", "$$ = $1"]
+          [ "SPEECH", "$$ = {speech:$1}"]
+          [ "CHARACTER", "$$ = {character:$1}" ]
+          [ "CHARACTER : SPEECH", "$$ = {character:$1, speech:$3}"]
+        ]
+
+        "CHARACTER" : [
+          [ "CHARACTER_NAME", "$$ = {name:$1}"],
+          [ "CHARACTER_NAME ( EMOTION_NAME_LIST )", "$$ = {name:$1, emotion:$3}" ]
+        ]
+
+        "EMOTION_NAME_LIST" : [
+          ["EMOTION_NAME", "$$ = [$1]"]
+          ["EMOTION_NAME_LIST , EMOTION_NAME", "$1.push($3)"]
+        ]
+
+        "SETTING" : [
+          [ "- SETTING_KEY : SETTING_VALUE -", " $$ = {}; $$[$2] = $4;"]
+        ]
+
+        "SETTING_KEY" : [
+          [ "SETTING_STRING", "$$ = $1" ]
+        ]
+
+        "SETTING_VALUE" : [
+          [ "SETTING_STRING", "$$ = [$1]" ]
+          [ "SETTING_VALUE , SETTING_STRING", "$1.push($3)"]
+        ]
+
+        # "LINE" :[[ "e + e",   "$$ = $1 + $3;" ],
+        #       [ "e - e",   "$$ = $1 - $3;" ],
+        #       [ "e * e",   "$$ = $1 * $3;" ],
+        #       [ "e / e",   "$$ = $1 / $3;" ],
+        #       [ "e ^ e",   "$$ = Math.pow($1, $3);" ],
+        #       [ "- e",     "$$ = -$2;", {"prec": "UMINUS"} ],
+        #       [ "( e )",   "$$ = $2;" ],
+        #       [ "NUMBER",  "$$ = Number(yytext);" ],
+        #       [ "E",       "$$ = Math.E;" ],
+        #       [ "PI",      "$$ = Math.PI;" ]]
+    }
+}
+
+parser = new Jison.Parser grammar
+parser.yy = {hello:'outside'}
+parser.lexer = lexer
+__original = lexer.lex
+lexer.lex = ->
+  result = __original.apply @, arguments
+  console.log "returned: #{result} yytext: #{lexer.yytext}"
+  return result
+result = parser.parse """
 -- Characters : Alice, Bob, Chris --
 Long long time ago, there were 3 people.
 
@@ -221,6 +340,4 @@ Note: This line is not considered as speech.
 
 Alice (Wave, Smile) : Bye
 """
-
-while output = lexer.lex()
-  console.log "token=#{output}, text=#{lexer.yytext}"
+console.log JSON.stringify result
