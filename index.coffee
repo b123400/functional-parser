@@ -1,26 +1,50 @@
 class Lexer
   constructor : ->
     @steps = []
-    @input = ""
-    @yytext = ""
-    @index = 0
+    @setInput ""
 
   addLexingStep : (lexingStep)->
     @steps.push lexingStep if lexingStep not in @steps
+    lexingStep.lexer = @
 
   setInput : (@input)->
+    @yytext = ""
     @index = 0
+    @tokens = []
+    @queue = []
 
   lex : ->
-    currentText = @input.substr @index
+    if queued = @dequeue()
+      return queued.token
+
+    currentText = @remainingText()
     return if not currentText
+    
     for step in @steps
       thisToken = step.lexingStep currentText
       continue if not thisToken
-      @yytext = step.yytext
-      @index += @yytext.length
-      return thisToken
+      
+      capturedText = step.yytext
+      if thisToken not instanceof Array
+        thisToken = [thisToken]
+        capturedText = [capturedText]
+
+      objs = ({ token, text:capturedText[index] } for token, index in thisToken)
+      @queue.push obj for obj in objs
+
+      return @dequeue().token
     return 'INVALID'
+
+  dequeue : ->
+    return false if not @queue.length
+    thisObj = @queue.shift()
+    @yytext = thisObj.text
+    @index += @yytext.length
+    @tokens.push thisObj.token
+    return thisObj
+
+  remainingText : ->
+    @input.substr @index
 
 class RegexStep
   ###
@@ -52,18 +76,81 @@ class LineStep
       @yytext = input
     return @name
 
-class CharacterStep
+class BaseStep
+  lastToken : -> @lexer.tokens[-1..][0]
+
+class CharacterStep extends BaseStep
+  colonRegex : /[\s]*:[\s]*/
   constructor : (@characters=[])->
+    super
 
   addCharacter : (name)->
     @characters.push name if name not in @characters
 
   lexingStep : (input)->
+    if @lastToken() is 'CHARACTER_NAME'
+      # Character name followed by a colon
+      # [Character name] : some text
+      nextColon = @colonRegex.exec input
+      if nextColon?.index is 0
+        @yytext = nextColon[0]
+        return 'COLON'
+
     for characterName in @characters
       if input.substr(0, characterName.length) is characterName
         @yytext = characterName
-        return 'CHARACTER'
+
+        return 'CHARACTER_NAME'
     return false
+
+class EmotionStep extends BaseStep
+  regex :
+    open  : /[\s]*\([\s]*/
+    close : /[\s]*\)[\s]*/
+    comma : /[\s]*,[\s]*/
+    string : /[^,\(\)]+/
+
+  constructor : ->
+    super
+    @openStep = new RegexStep @regex.open, -> '('
+    @closeStep = new RegexStep @regex.close, -> ')'
+    @commaStep = new RegexStep @regex.comma, -> ','
+    @stringStep = new RegexStep @regex.string, -> 'EMOTION_NAME'
+    @subLexer = new Lexer
+    @subLexer.addLexingStep s for s in [@openStep, @closeStep, @commaStep, @stringStep]
+
+  lexingStep : (input)->
+    return false if @lastToken() isnt 'CHARACTER_NAME'
+    
+    @subLexer.setInput input
+
+    results = []
+    while lexed = @subLexer.lex()
+      console.log "lexed: #{lexed}, and yytext: #{@subLexer.yytext}"
+      if lexed is 'INVALID'
+        break
+      else
+        results.push {lexed, yytext:@subLexer.yytext}
+        break if lexed is ')'
+
+    return false if results.length is 0
+
+    # Try character colon here because we overrided it
+    colonMatch = CharacterStep::colonRegex.exec @subLexer.remainingText()
+    if colonMatch?.index is 0
+      results.push
+        lexed : 'COLON'
+        yytext : colonMatch[0]
+
+    @yytext = (r.yytext for r in results)
+    return (r.lexed for r in results)
+
+    # emotionMatch = emotionRegex.exec input
+    # if emotionMatch?.index is 0
+    #   [ captured, open, name, end ] = emotionMatch
+    #   @yytext = [ open, name, end ]
+    #   return ['(','EMOTION_NAME',')']
+    # return false
 
 class SettingStep
 
@@ -107,8 +194,16 @@ lexer.addLexingStep number
 characterStep = new CharacterStep ['Alice', 'Bob']
 lexer.addLexingStep characterStep
 
-settingStep = new SettingStep (key,value)->
-  console.log "Setting #{key} = #{value}"
+emotionStep = new EmotionStep
+lexer.addLexingStep emotionStep
+
+settingStep = new SettingStep (key, value)->
+  if key.toLowerCase() is 'characters'
+    if value instanceof Array
+      characterStep.addCharacter v for v in value
+    else
+      characterStep.addCharacter value
+
 lexer.addLexingStep settingStep
 
 lineStep = new LineStep
@@ -116,9 +211,16 @@ lexer.addLexingStep lineStep
 
 lexer.setInput """
 -- Characters : Alice, Bob, Chris --
-Alice: Wow
+Long long time ago, there were 3 people.
+
+Alice: Good morning.
+Chris: Hello.
+Bob(Smile): :)
+
+Note: This line is not considered as speech.
+
+Alice (Wave, Smile) : Bye
 """
 
 while output = lexer.lex()
-  console.log output
-  console.log lexer.yytext
+  console.log "token=#{output}, text=#{lexer.yytext}"
