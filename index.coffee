@@ -18,7 +18,6 @@ class Lexer
       return queued.token
 
     currentText = @remainingText()
-    console.log "currentText is #{currentText}"
     return "EOF" if not currentText
     
     for step in @steps
@@ -40,7 +39,6 @@ class Lexer
     return false if not @queue.length
     thisObj = @queue.shift()
     @yytext = thisObj.text
-    console.log 'setting yy text '+@yytext
     @index += @yytext.length
     @tokens.push thisObj.token
     return thisObj
@@ -90,7 +88,6 @@ class CharacterStep extends BaseStep
     @characters.push name if name not in @characters
 
   lexingStep : (input)->
-    console.log "=====Last Token is: #{@lastToken()}"
     if @lastToken() is 'CHARACTER_NAME'
       # Character name followed by a colon
       # [Character name] : some text
@@ -129,7 +126,7 @@ class EmotionStep extends BaseStep
 
     results = []
     while lexed = @subLexer.lex()
-      console.log "lexed: #{lexed}, and yytext: #{@subLexer.yytext}"
+      # console.log "lexed: #{lexed}, and yytext: #{@subLexer.yytext}"
       if lexed is 'INVALID'
         return false
       else
@@ -227,7 +224,7 @@ lexer = new Lexer
 number = new RegexStep /[0-9]+/, ->'NUMBER'
 lexer.addLexingStep number
 
-characterStep = new CharacterStep ['Alice', 'Bob']
+characterStep = new CharacterStep ['Alice', 'Bob', 'Chris']
 lexer.addLexingStep characterStep
 
 emotionStep = new EmotionStep
@@ -326,7 +323,6 @@ parser.lexer = lexer
 __original = lexer.lex
 lexer.lex = ->
   result = __original.apply @, arguments
-  console.log "returned: #{result} yytext: #{lexer.yytext}"
   return result
 result = parser.parse """
 -- Characters : Alice, Bob, Chris --
