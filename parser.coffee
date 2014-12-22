@@ -22,7 +22,6 @@ class Lexer
 
     currentText = @remainingText()
     if not currentText
-      debugger;
       return "EOF"
     
     for syntax in @syntaxes
@@ -60,7 +59,7 @@ class Parser
 
       STATES: [
         ['STATE', '$$ = [$1]']
-        ['STATES STATE', '$1.push($2)']
+        ['STATES STATE', 'if($2)$1.push($2)']
       ]
     }
     @lexer = new Lexer
@@ -88,7 +87,6 @@ class Parser
           ["left", ":"]
       ]
 
-    console.log JSON.stringify @bnf
     parser = new Jison.Parser grammar
     parser.yy = @yy
     parser.lexer = @lexer

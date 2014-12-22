@@ -9,19 +9,19 @@ class CharacterSyntax extends BaseSyntax
     @characters.push name if name not in @characters
 
   lexingStep : (input)->
-    if @lastToken() is 'CHARACTER_NAME'
       # Character name followed by a colon
       # [Character name] : some text
-      nextColon = @colonRegex.exec input
-      if nextColon?.index is 0
-        @yytext = nextColon[0]
-        return ':'
 
     for characterName in @characters
       if input.substr(0, characterName.length) is characterName
-        @yytext = characterName
+        @yytext = [characterName]
+        result = ['CHARACTER_NAME']
 
-        return 'CHARACTER_NAME'
+        nextColon = @colonRegex.exec input[characterName.length..]
+        if nextColon?.index is 0
+          @yytext.push nextColon[0]
+          result.push ':'
+        return result
     return false
 
   grammar : ->

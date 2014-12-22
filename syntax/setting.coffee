@@ -12,6 +12,7 @@ class SettingSyntax extends BaseSyntax
     colonRegex : /[\s]*:[\s]*/
 
   constructor : (@callback)->
+    super
     @dashSyntax = new RegexSyntax @regex.dash, -> '-'
     @stringSyntax = new RegexSyntax @regex.string, -> 'SETTING_STRING'
     @commaSyntax = new RegexSyntax @regex.comma, -> ','
@@ -23,23 +24,26 @@ class SettingSyntax extends BaseSyntax
     @subLexer.setInput input
 
     results = []
+    yytexts = []
     i = 0
     dashCount = 0
     while lexed = @subLexer.lex()
 
-      break if i is 0 and lexed isnt '-'
-      break if lexed is 'INVALID'
+      break if lexed is 'INVALID' or lexed is 'EOF'
 
-      results.push {lexed, yytext:@subLexer.yytext}
+      results.push lexed
+      yytexts.push @subLexer.yytext
 
       dashCount++ if lexed is '-'
       break if dashCount is 2
       i++
 
     return false if results.length is 0
+    [open, middle..., close] = results
+    return false if open isnt '-' or close isnt '-' or not middle.every (x)-> x in ['SETTING_STRING', ':', ',']
 
-    @yytext = (r.yytext for r in results)
-    return (r.lexed for r in results)
+    @yytext = yytexts
+    return results
 
   grammar : (bnf)->
     STATE : [

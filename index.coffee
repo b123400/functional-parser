@@ -1,26 +1,29 @@
 {Parser, Lexer} = require './parser'
-LineStep = require './syntax/line'
-SettingStep = require './syntax/setting'
-CharacterStep = require './syntax/character'
-EmotionStep = require './syntax/emotion'
+LineSyntax = require './syntax/line'
+SettingSyntax = require './syntax/setting'
+CharacterSyntax = require './syntax/character'
+EmotionSyntax = require './syntax/emotion'
+ConditionSyntax = require './syntax/condition'
 
 Jison = require 'jison'
 
 parser = new Parser
 
-characterStep = new CharacterStep ['Alice', 'Bob']
-parser.addSyntax characterStep
+characterSyntax = new CharacterSyntax ['Alice', 'Bob']
+parser.addSyntax characterSyntax
 
-emotionStep = new EmotionStep
-parser.addSyntax emotionStep
+emotionSyntax = new EmotionSyntax
+parser.addSyntax emotionSyntax
 
-settingStep = new SettingStep (key, values)->
-  characterStep.applySetting key, values
+settingSyntax = new SettingSyntax (key, values)->
+  characterSyntax.applySetting key, values
 
-parser.addSyntax settingStep
+parser.addSyntax settingSyntax
 
-lineStep = new LineStep
-parser.addSyntax lineStep
+parser.addSyntax new ConditionSyntax
+
+lineSyntax = new LineSyntax
+parser.addSyntax lineSyntax
 
 result = parser.parse """
 -- Characters : Alice, Bob, Chris --
@@ -33,5 +36,6 @@ Bob(Smile): :)
 Note: This line is not considered as speech.
 
 Alice (Wave, Smile) : Bye
+[Condition ->]move!
 """
 console.log JSON.stringify result
