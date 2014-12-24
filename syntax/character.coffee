@@ -27,15 +27,20 @@ class CharacterSyntax extends BaseSyntax
   grammar : ->
     STATE : [
       # @pattern "CHARACTER", -> {character:$1}
-      @pattern "CHARACTER : LINE", -> $1.speech = $3; { characterModifier : $1 }
+      @pattern "CHARACTER : LINE", ->
+        characterName = $1.name
+        obj = {}
+        obj[characterName] = { speech: $3.text }
+        { characterModifier : obj }
     ]
 
     "CHARACTER" : [
       @pattern "CHARACTER_NAME", -> {name:$1}
     ]
 
-  applySetting : (key, values)->
-    return if key.toLowerCase() isnt 'characters'
-    @addCharacter v for v in values
+  applySetting : ->
+    (key, values)=>
+      return if key.toLowerCase() isnt 'characters'
+      @addCharacter v for v in values
 
 module.exports = CharacterSyntax
