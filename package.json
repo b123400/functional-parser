@@ -1,5 +1,5 @@
 {
-  "name": "plugable-jison",
+  "name": "functional-parser",
   "version": "0.0.0",
   "dependencies": {
     "jison": "*"
