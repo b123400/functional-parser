@@ -26,8 +26,8 @@ class CharacterSyntax extends BaseSyntax
 
   grammar : ->
     STATE : [
-      @pattern "CHARACTER", -> {character:$1}
-      @pattern "CHARACTER : LINE", -> {character:$1, speech:$3}
+      # @pattern "CHARACTER", -> {character:$1}
+      @pattern "CHARACTER : LINE", -> $1.speech = $3; { characterModifier : $1 }
     ]
 
     "CHARACTER" : [
